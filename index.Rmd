@@ -5,7 +5,7 @@ date: "December 3, 2016"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup}
 library(dplyr)
 library(caret)
 library(ggplot2)
@@ -24,13 +24,20 @@ pml_training <- read.csv('pml-training.csv')
 pml_testing <- read.csv('pml-testing.csv')
 pml_trd <- pml_training %>% 
     select(-starts_with('max_'), -starts_with('min_'), -starts_with('var_'), 
-           -starts_with('avg_'), -starts_with('stddev_'), -starts_with('amplitude_'), -skewness_yaw_belt,
-           -kurtosis_yaw_forearm, -skewness_yaw_forearm, -skewness_yaw_dumbbell, -kurtosis_yaw_dumbbell,
-           -kurtosis_yaw_belt, -X, -user_name, -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp,
-           -kurtosis_roll_belt, -kurtosis_picth_belt, -skewness_roll_belt, -skewness_roll_belt.1,
-           -kurtosis_roll_arm, -kurtosis_picth_arm, -kurtosis_yaw_arm, -skewness_roll_arm, -skewness_pitch_arm, 
-           -skewness_yaw_arm, -kurtosis_roll_dumbbell, -kurtosis_picth_dumbbell, -skewness_roll_dumbbell, 
-           -skewness_pitch_dumbbell, -kurtosis_roll_forearm, -kurtosis_picth_forearm, -skewness_roll_forearm, 
+           -starts_with('avg_'), -starts_with('stddev_'), 
+           -starts_with('amplitude_'), -skewness_yaw_belt,
+           -kurtosis_yaw_forearm, -skewness_yaw_forearm, 
+           -skewness_yaw_dumbbell, -kurtosis_yaw_dumbbell,
+           -kurtosis_yaw_belt, -X, -user_name, -raw_timestamp_part_1, 
+           -raw_timestamp_part_2, -cvtd_timestamp,
+           -kurtosis_roll_belt, -kurtosis_picth_belt, 
+           -skewness_roll_belt, -skewness_roll_belt.1,
+           -kurtosis_roll_arm, -kurtosis_picth_arm, 
+           -kurtosis_yaw_arm, -skewness_roll_arm, -skewness_pitch_arm, 
+           -skewness_yaw_arm, -kurtosis_roll_dumbbell, 
+           -kurtosis_picth_dumbbell, -skewness_roll_dumbbell, 
+           -skewness_pitch_dumbbell, -kurtosis_roll_forearm, 
+           -kurtosis_picth_forearm, -skewness_roll_forearm, 
            -skewness_pitch_forearm, -new_window)
 ```
 
@@ -45,27 +52,40 @@ pmldata <- pmldata %>% select(-classe)
 pmldata <- cbind(pmldata, pml_trd$classe)
 ```
 
+We divide the data into 60/40 to reduce the training time and it will also lower the accuracy. 
+```{r}
+inTrain <- createDataPartition(y = pmldata$`pml_trd$classe`, 
+                               p = 0.60, list = FALSE)
+
+pmltrain<- pmldata[inTrain,]
+pmltest <- pmldata[-inTrain,]
+```
 
 ### Build the model with train control set to cross validation
 
 #### Use rpart
 
 ```{r}
-modelFit1 <- train(pmldata$`pml_trd$classe`~ ., method='rpart', preProcess='pca', 
-                   trControl = trainControl(method='cv'), data=pmldata)
+modelFit1 <- train(pmltrain$`pml_trd$classe`~ ., method='rpart', preProcess='pca', 
+                   trControl = trainControl(method='cv'), data=pmltrain)
 modelFit1$finalModel
+```
+
+```{r}
+predrpart <- predict(modelFit1, newdata = pmltest)
+confusionMatrix(predrpart, pmltest$`pml_trd$classe`)
 ```
 
 ```{r}
 plot(modelFit1)
 ```
 
-Obviously, the result is very poor with accuracy about 30%. 
+Obviously, the result is very poor with accuracy about 34%. 
 
 #### Use random forest
 
-```{r, include=FALSE}
-modelFit2 <- train(pmldata$`pml_trd$classe`~ ., method='rf', preProcess='pca',                    trControl = trainControl(method='cv'), data=pmldata)
+```{r, cache=TRUE}
+modelFit2 <- train(pmltrain$`pml_trd$classe`~ ., method='rf', preProcess='pca',                    trControl = trainControl(method='cv'), data=pmltrain)
 
 ```
 
@@ -73,18 +93,35 @@ modelFit2 <- train(pmldata$`pml_trd$classe`~ ., method='rf', preProcess='pca',  
 modelFit2
 ```
 
+```{r}
+predrf <- predict(modelFit2, newdata = pmltest)
+confusionMatrix(predrf, pmltest$`pml_trd$classe`)
+```
+
+```{r}
+plot(modelFit2)
+```
+
+Random forest gives a much better accuracy about 97%. We will use it to predict the outcome.
+
 #### Convert the testing dataset
 
 ```{r}
-pml_testing1 <- pml_testing %>% select(-starts_with('max_'), -starts_with('min_'), -starts_with('var_'), 
-                                       -starts_with('avg_'), -starts_with('stddev_'), -starts_with('amplitude_'), -skewness_yaw_belt,
-                                       -kurtosis_yaw_forearm, -skewness_yaw_forearm, -skewness_yaw_dumbbell, -kurtosis_yaw_dumbbell,
-                                       -kurtosis_yaw_belt, -X, -user_name, -raw_timestamp_part_1, -raw_timestamp_part_2, -cvtd_timestamp,
-                                       -kurtosis_roll_belt, -kurtosis_picth_belt, -skewness_roll_belt, -skewness_roll_belt.1,
-                                       -kurtosis_roll_arm, -kurtosis_picth_arm, -kurtosis_yaw_arm, -skewness_roll_arm, -skewness_pitch_arm, 
-                                       -skewness_yaw_arm, -kurtosis_roll_dumbbell, -kurtosis_picth_dumbbell, -skewness_roll_dumbbell, 
-                                       -skewness_pitch_dumbbell, -kurtosis_roll_forearm, -kurtosis_picth_forearm, -skewness_roll_forearm, 
-                                       -skewness_pitch_forearm, -new_window)
+pml_testing1 <- pml_testing %>% 
+    select(-starts_with('max_'), -starts_with('min_'), -starts_with('var_'), 
+           -starts_with('avg_'), -starts_with('stddev_'), -starts_with('amplitude_'),
+           -skewness_yaw_belt,-kurtosis_yaw_forearm, -skewness_yaw_forearm, 
+           -skewness_yaw_dumbbell, -kurtosis_yaw_dumbbell, -kurtosis_yaw_belt, -X, 
+           -user_name, -raw_timestamp_part_1, -raw_timestamp_part_2, 
+           -cvtd_timestamp, -kurtosis_roll_belt, 
+           -kurtosis_picth_belt, -skewness_roll_belt, 
+           -skewness_roll_belt.1,-kurtosis_roll_arm, 
+           -kurtosis_picth_arm, -kurtosis_yaw_arm, 
+           -skewness_roll_arm, -skewness_pitch_arm,  -skewness_yaw_arm, 
+           -kurtosis_roll_dumbbell, -kurtosis_picth_dumbbell, 
+           -skewness_roll_dumbbell, -skewness_pitch_dumbbell, 
+           -kurtosis_roll_forearm, -kurtosis_picth_forearm, -skewness_roll_forearm, 
+           -skewness_pitch_forearm, -new_window)
 
 pml_testing1 <- data.frame(lapply(pml_testing1, function(x) as.numeric(x)))  
 ```
